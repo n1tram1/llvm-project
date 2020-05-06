@@ -86,6 +86,10 @@ public:
 
   private:
     void CommonInitializer(const FileSpec &file_spec, Target *target);
+
+    bool FindUniqueSymbolContext(Target &target, const FileSpec &file_spec, SymbolContext &sc) const;
+
+    lldb::ModuleSP m_module_sp;
   };
 
   typedef std::shared_ptr<File> FileSP;

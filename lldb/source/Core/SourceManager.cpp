@@ -403,6 +403,7 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
       if (!file_spec.GetDirectory() && file_spec.GetFilename()) {
         // If this is just a file name, lets see if we can find it in the
         // target:
+        /*
         bool check_inlines = false;
         SymbolContextList sc_list;
         size_t num_matches =
@@ -437,7 +438,17 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
             m_mod_time = FileSystem::Instance().GetModificationTime(m_file_spec);
           }
         }
+        */
+        SymbolContext sc;
+        if (FindUniqueSymbolContext(*target, file_spec, sc)) {
+            if (sc.comp_unit)
+              m_file_spec = sc.comp_unit->GetPrimaryFile();
+            m_mod_time = FileSystem::Instance().GetModificationTime(m_file_spec);
+
+            m_module_sp = sc.module_sp;
+        }
       }
+
       // Try remapping if m_file_spec does not correspond to an existing file.
       if (!FileSystem::Instance().Exists(m_file_spec)) {
         FileSpec new_file_spec;
@@ -449,6 +460,10 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
           m_file_spec = new_file_spec;
           m_mod_time = FileSystem::Instance().GetModificationTime(m_file_spec);
         }
+
+        SymbolContext sc;
+        if (FindUniqueSymbolContext(*target, file_spec, sc))
+            m_module_sp = sc.module_sp;
       }
     }
   }
@@ -456,6 +471,45 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
   if (m_mod_time != llvm::sys::TimePoint<>())
     m_data_sp = FileSystem::Instance().CreateDataBuffer(m_file_spec);
 }
+
+bool SourceManager::File::FindUniqueSymbolContext(Target &target, const FileSpec &file_spec, SymbolContext &sc) const
+{
+  bool check_inlines = false;
+  SymbolContextList sc_list;
+  size_t num_matches =
+    target.GetImages().ResolveSymbolContextForFilePath(
+        file_spec.GetFilename().AsCString(), 0, check_inlines,
+        SymbolContextItem(eSymbolContextModule |
+          eSymbolContextCompUnit),
+        sc_list);
+  bool got_multiple = false;
+  if (num_matches != 0) {
+    if (num_matches > 1) {
+      SymbolContext sc;
+      CompileUnit *test_cu = nullptr;
+
+      for (unsigned i = 0; i < num_matches; i++) {
+        sc_list.GetContextAtIndex(i, sc);
+        if (sc.comp_unit) {
+          if (test_cu) {
+            if (test_cu != sc.comp_unit)
+              got_multiple = true;
+            break;
+          } else
+            test_cu = sc.comp_unit;
+        }
+      }
+    }
+
+    if (!got_multiple) {
+      sc_list.GetContextAtIndex(0, sc);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 
 uint32_t SourceManager::File::GetLineOffset(uint32_t line) {
   if (line == 0)
