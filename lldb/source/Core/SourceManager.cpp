@@ -583,12 +583,25 @@ void SourceManager::File::UpdateIfNeeded() {
   // For now we check each time we want to display info for the file.
   auto curr_mod_time = FileSystem::Instance().GetModificationTime(m_file_spec);
 
+  if (IsNewerThanItsModule(curr_mod_time))
+    return;
+
   if (curr_mod_time != llvm::sys::TimePoint<>() &&
       m_mod_time != curr_mod_time) {
     m_mod_time = curr_mod_time;
     m_data_sp = FileSystem::Instance().CreateDataBuffer(m_file_spec);
     m_offsets.clear();
   }
+}
+
+bool SourceManager::File::IsNewerThanItsModule(llvm::sys::TimePoint<> time)
+{
+  if (m_module_sp) {
+    auto module_mod_time = FileSystem::Instance().GetModificationTime(m_module_sp->GetFileSpec());
+    return time > module_mod_time;
+  }
+
+  return false;
 }
 
 size_t SourceManager::File::DisplaySourceLines(uint32_t line,

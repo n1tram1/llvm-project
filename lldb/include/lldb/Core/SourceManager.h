@@ -89,6 +89,8 @@ public:
 
     bool FindUniqueSymbolContext(Target &target, const FileSpec &file_spec, SymbolContext &sc) const;
 
+    bool SourceManager::File::IsNewerThanItsModule(llvm::sys::TimePoint<> time);
+
     lldb::ModuleSP m_module_sp;
   };
 
