@@ -22,6 +22,10 @@
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/PathMappingList.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Target/StackFrame.h"
+#include "lldb/Target/Thread.h"
+#include "lldb/Target/ThreadList.h"
+#include "lldb/Target/Process.h"
 #include "lldb/Utility/AnsiTerminal.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/DataBuffer.h"
@@ -460,16 +464,20 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
           m_file_spec = new_file_spec;
           m_mod_time = FileSystem::Instance().GetModificationTime(m_file_spec);
         }
-
-        SymbolContext sc;
-        if (FindUniqueSymbolContext(*target, file_spec, sc))
-            m_module_sp = sc.module_sp;
       }
     }
   }
 
   if (m_mod_time != llvm::sys::TimePoint<>())
     m_data_sp = FileSystem::Instance().CreateDataBuffer(m_file_spec);
+
+  if (!m_module_sp) {
+    SymbolContext sc;
+    if (FindUniqueSymbolContext(*target, file_spec, sc))
+      m_module_sp = sc.module_sp;
+    else
+      m_module_sp = GetCurrentSelectedtModuleIfMatchesFile();
+  }
 }
 
 bool SourceManager::File::FindUniqueSymbolContext(Target &target, const FileSpec &file_spec, SymbolContext &sc) const
@@ -602,6 +610,46 @@ bool SourceManager::File::IsNewerThanItsModule(llvm::sys::TimePoint<> time)
   }
 
   return false;
+}
+
+ModuleSP SourceManager::File::GetCurrentSelectedtModuleIfMatchesFile() {
+  DebuggerSP debugger_sp(m_debugger_wp.lock());
+  if (!debugger_sp)
+    return nullptr;
+
+  lldb::TargetSP target_sp(debugger_sp->GetSelectedTarget());
+  if (!target_sp)
+    return nullptr;
+
+  lldb::ProcessSP process_sp(target_sp->CalculateProcess());
+  if (!process_sp)
+    return nullptr;
+
+  ThreadList &thread_list(process_sp->GetThreadList());
+
+  lldb::ThreadSP thread_sp(thread_list.GetSelectedThread());
+  if (!thread_sp)
+    return nullptr;
+
+  lldb::StackFrameSP stackframe_sp(thread_sp->GetSelectedFrame());
+  if (!stackframe_sp)
+    return nullptr;
+
+  const Address pc_addr(stackframe_sp->GetFrameCodeAddress());
+
+  lldb::ModuleSP current_module(pc_addr.GetModule());
+  if (!current_module)
+    return nullptr;
+
+  SymbolContextList sc_list;
+  auto num_matches = current_module->ResolveSymbolContextsForFileSpec(
+      m_file_spec, 0, false, eSymbolContextModule | eSymbolContextCompUnit,
+      sc_list);
+
+  if (!num_matches)
+    return nullptr;
+
+  return current_module;
 }
 
 size_t SourceManager::File::DisplaySourceLines(uint32_t line,
