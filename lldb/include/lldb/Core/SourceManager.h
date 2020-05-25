@@ -39,7 +39,7 @@ public:
     File(const FileSpec &file_spec, lldb::DebuggerSP debugger_sp);
     ~File() = default;
 
-    void UpdateIfNeeded();
+    void UpdateIfNeeded(const Module *parent_module);
 
     size_t DisplaySourceLines(uint32_t line, llvm::Optional<size_t> column,
                               uint32_t context_before, uint32_t context_after,
@@ -149,7 +149,7 @@ public:
                               uint32_t start_line, uint32_t end_line,
                               std::vector<uint32_t> &match_lines);
 
-  FileSP GetFile(const FileSpec &file_spec);
+  FileSP GetFile(const FileSpec &file_spec, const Module *parent_module);
 
 protected:
   FileSpec m_last_file_spec;

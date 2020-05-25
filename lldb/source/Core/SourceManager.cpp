@@ -63,7 +63,7 @@ SourceManager::SourceManager(const DebuggerSP &debugger_sp)
 // Destructor
 SourceManager::~SourceManager() {}
 
-SourceManager::FileSP SourceManager::GetFile(const FileSpec &file_spec) {
+SourceManager::FileSP SourceManager::GetFile(const FileSpec &file_spec, const Module *parent_module) {
   if (!file_spec)
     return nullptr;
 
@@ -83,7 +83,7 @@ SourceManager::FileSP SourceManager::GetFile(const FileSpec &file_spec) {
 
   // Update the file contents if needed if we found a file
   if (file_sp)
-    file_sp->UpdateIfNeeded();
+    file_sp->UpdateIfNeeded(parent_module);
 
   // If file_sp is no good or it points to a non-existent file, reset it.
   if (!file_sp || !FileSystem::Instance().Exists(file_sp->GetFileSpec())) {
@@ -523,11 +523,18 @@ bool SourceManager::File::LineIsValid(uint32_t line) {
   return false;
 }
 
-void SourceManager::File::UpdateIfNeeded() {
+void SourceManager::File::UpdateIfNeeded(const Module *parent_module) {
   // TODO: use host API to sign up for file modifications to anything in our
   // source cache and only update when we determine a file has been updated.
   // For now we check each time we want to display info for the file.
   auto curr_mod_time = FileSystem::Instance().GetModificationTime(m_file_spec);
+
+  if (parent_module) {
+    auto module_mod_time = FileSystem::Instance().GetModificationTime(parent_module->GetFileSpec());
+    // Prevent the source file from being reloaded if it's module is younger (it hasn't been updated/recompiled).
+    if (module_mod_time < curr_mod_time)
+      return;
+  }
 
   if (curr_mod_time != llvm::sys::TimePoint<>() &&
       m_mod_time != curr_mod_time) {
